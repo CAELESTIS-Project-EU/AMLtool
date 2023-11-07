@@ -1,0 +1,19 @@
+{
+    "master_file_name": "Master.aml",
+    "template_file_name": "Template.aml",
+    "automationml_files_folder": "AutomationML_files",
+    "sources_file": "src",
+    "W_IDs_txt_file_name": "W_IDs.txt",
+    "output_options": ["Resin_pressure_field", "Resin_velocity_field", "Filling_time", "Filling_factor", "Resin_injection_volume", "Temperature_field_injection", "Dried_zones", "Voids_content_field", "Degree_of_cure_field", "Deformation_field_distortion", "Max_stress", "Max_strain", "Evolution_stress_field", "Evolution_strain_field"],
+    "Workflow_options": ["w1", "w2", "w3"],
+    "Predefined_workflows": {
+        "w1": ["CheckDoE", "ADD", "ITA", "PAM-RTMf", "PAM-RTMc", "PAMDIST", "ABA"],
+        "w2": ["CheckDoE", "ADD", "ITA", "PAM-RTMf", "PAM-RTMc", "PAMDIST", "ABA", "ML"],
+        "w3": ["PAM-RTMf", "PAM-RTMc", "PAMDIST"]
+    },
+    "Models": {
+        "Preprocess": ["CheckDoE"],
+        "Simulation": ["ADD", "ITA", "PAM-RTMf", "PAM-RTMc", "PAMDIST", "ABA"],
+        "Postprocess": ["ML"]
+    }
+}
