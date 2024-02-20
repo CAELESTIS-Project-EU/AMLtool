@@ -7,3 +7,6 @@ The use of the tool requires the installation of some modules:
 - lxml
 
 AutomationML files are xml based files. There is an editor to help with the visualization of the files to be downloaded from: https://www.automationml.org/download-archive/.
+
+## Acknowledgement
+This work has been developed in the CAELESTIS project. This project has received funding from the European Union’s HORIZON research and innovation program under grant agreement nº 101056886
