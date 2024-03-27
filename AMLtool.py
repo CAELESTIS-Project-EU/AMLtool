@@ -258,7 +258,7 @@ class AML_App():
                 self.write_value_on_AML_attribute(ParametersIE, self.Software_Parameters_OutputFile_name, value_field)
                 if idx > 0:
                     #add inputs_file atribute to Parameters IE
-                    self.add_attribute_on_AML_element(ParametersIE, 'input_folder')
+                    self.add_attribute_on_AML_element(ParametersIE, 'inputs_folder')
                     value_field = '{results_folder}/{line_number}/' + Simulation_models[idx-1]
                     self.write_value_on_AML_attribute(ParametersIE, 'inputs_folder', value_field)
                     
