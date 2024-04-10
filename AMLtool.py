@@ -19,8 +19,6 @@ class AML_GUI_App:
     def __init__(self, root):
         self.root = root
         self.root.title("AutomationML tool")
-        # Graphical configuration
-        #self.root.geometry("600x400")
 
         # parse configuration file
         self.mainfolder = os.getcwd()
