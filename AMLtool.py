@@ -20,7 +20,7 @@ from lxml import etree
 import csv
 import os
 import json
-import datetime
+from datetime import datetime, date
 
 class Config_parser():
     def __init__(self):
@@ -45,6 +45,7 @@ class Config_parser():
             data = json.load(json_file)
             self.output_options = data['output_options']
             self.Predefined_workflows = data['Predefined_workflows']
+            
 
 class AML_App():
     def __init__(self, PathOfDoE, Selected_Workflow_Simulations, selected_output_options):
@@ -88,7 +89,7 @@ class AML_App():
             data = json.load(json_file)
             self.master_file_name = data['master_file_name']
             self.template_file_name = data['template_file_name']
-            # self.Workflow_options = data['Workflow_options']
+            self.ftp_destination_main_folder = data['ftp_destination_main_folder']
             self.output_options = data['output_options']
             self.W_IDs_txt_file_name = data['W_IDs_txt_file_name']
             self.automationml_files_folder = data['automationml_files_folder']
@@ -105,6 +106,7 @@ class AML_App():
         attribute = {"Name": Name}
         new_aml_element = Element(tag, attrib=attribute, text=text, context_global=context_global, context_local=context_local)
         parent.append(new_aml_element.__element__)
+        return new_aml_element
 
     def add_attribute_on_AML_element(self, Internal_Element_obj, attribute_name):
         new_attribute = etree.Element("Attribute", Name=attribute_name, AttributeDataType="xs:string")
@@ -113,10 +115,11 @@ class AML_App():
     def get_max_value_AML_workflow(self,AML, InternalElement):
         IE = AML.find(f"./*[@Name='{InternalElement}']")
         max_value = 0
-        for atribute in IE.iterchildren():
-            value = int(atribute.__element__.attrib['Name'].replace("w", ""))
-            if value > max_value:
-                max_value = value
+        for child in IE.iterchildren():
+            if child.tag.endswith('Attribute'):
+                value = int(child.__element__.attrib['Name'].replace("w", ""))
+                if value > max_value:
+                    max_value = value
         return max_value
 
     def write_value_on_AML_attribute(self, InternalElementObj, attribute_name, value):
@@ -127,6 +130,12 @@ class AML_App():
         with open(W_IDs_txt_path, 'a') as f:
             f.write(str(value) + '\n')
 
+    def date_time_to_integer(self):
+        now = datetime.now()
+        formatted_date_time = now.strftime("%Y%m%d%H%M%S")
+        integer_representation = int(formatted_date_time)
+    
+        return integer_representation
 
     def write_on_AML(self):
         rootmaster = PyAutomationML(self.AML_master_path)
@@ -138,43 +147,46 @@ class AML_App():
 
         # Get the root of the master file
         self.master = rootmaster.root.find("./*[@Name='Workflow']")
-        
+
         # Get the root of the AutomationML template
         self.workflow_instance = roottemplate.root.find("./*[@Name='Workflow']")
 
         # get workflow last value
         value = self.get_max_value_AML_workflow(self.master, self.Master_WorkflowsIE_name)
         print(f'Old workflow ID is {value}')
-        new_workflow_number = value + 1
-        print(f'New workflow ID is {new_workflow_number}')
+        self.new_workflow_number = int(value) + 1
+        self.new_workflow_ID = 'w' + str(value + 1) + '_' + str(self.date_time_to_integer())
+        print(f'New workflow number is {self.new_workflow_number}')
 
         # write ID number on txt file (keep an extra copy of the information to avoid misuse)
-        self.write_ID_w_on_txt(self.W_IDs_txt_path, new_workflow_number)
+        self.write_ID_w_on_txt(self.W_IDs_txt_path, str(self.new_workflow_number))
 
-        # Set AML ID name like 'w + ID number + .aml' 
-        self.workflow_instance_name = 'w' + str(new_workflow_number)
-        print(f'New workflow name is {self.workflow_instance_name}')
-        self.template_instance_name = 'w' + str(new_workflow_number) + '.aml'
+        # Set AML ID name as 'w + ID number + .aml' 
+        self.template_instance_name = str(self.new_workflow_ID) + '.aml'
         print(f'New workflow file name is {self.template_instance_name}')
         self.template_instance_path = os.path.join(self.automationml_files_folder, self.template_instance_name)
 
-        # write ID on master file as an attribute in Workflows IE and as an element
+        # write number on master file as an attribute in Workflows IE
         WorkflowsObj = self.master.find(f"./*[@Name='{self.Master_WorkflowsIE_name}']")
-        self.add_attribute_on_AML_element(WorkflowsObj, self.workflow_instance_name)
-        self.create_AML_element(WorkflowsObj, self.workflow_instance_name)
-        Workflow_instance_Obj = WorkflowsObj.find(f".//{{http://www.dke.de/CAEX}}InternalElement[@Name='{self.workflow_instance_name}']")
+        self.add_attribute_on_AML_element(WorkflowsObj, str(self.new_workflow_number))
+
+        # write workflow ID on master file as an element
+        self.create_AML_element(WorkflowsObj, self.new_workflow_ID)
+        Workflow_instance_Obj = WorkflowsObj.find(f".//{{http://www.dke.de/CAEX}}InternalElement[@Name='{self.new_workflow_ID}']")
         self.add_attribute_on_AML_element(Workflow_instance_Obj, 'path')
-        
+        self.ftp_destination_workflow_folder = os.path.join(self.ftp_destination_main_folder, self.new_workflow_ID)
+        self.write_value_on_AML_attribute(Workflow_instance_Obj, 'path', os.path.normpath(self.ftp_destination_workflow_folder))
+
         # write selected workflow type in AutomationML template on information IE on the text of the existing attribute 'Sequence_type' 
         InformationIE = self.workflow_instance.find(f"./*[@Name='{self.Workflow_InformationIE_name}']")
-        self.write_value_on_AML_attribute(InformationIE, 'ID', self.workflow_instance_name)
+        self.write_value_on_AML_attribute(InformationIE, 'ID', self.new_workflow_ID)
         self.write_value_on_AML_attribute(InformationIE, self.Information_Sequence_type_name, self.selections[self.workflow_column_name])
-        current_date = datetime.date.today()
+        current_date = datetime.now().date()
         formatted_date = current_date.strftime("%Y/%m/%d")
         self.write_value_on_AML_attribute(InformationIE,'Date', str(formatted_date))
-        
+
         Info_OutputsIE = InformationIE.find("./*[@Name='Outputs']")
-        
+
         self.filtered_selected_output_options = [item for item in self.selected_output_options if item.strip() != ""]
         for output_element in self.filtered_selected_output_options:
             self.create_AML_element(Info_OutputsIE, output_element)
@@ -192,12 +204,14 @@ class AML_App():
         # 1a. Preprocess
         Bool_Preproc_models = any(element in self.Models["Preprocess"] for element in self.Predefined_workflows[self.selections[self.workflow_column_name]])
         if Bool_Preproc_models:
-            self.create_AML_element(PhasesIE, 'Preprocess')
-            PreprocessIE = PhasesIE.find("./*[@Name='Preprocess']")
+            PreprocessIE = self.create_AML_element(PhasesIE, 'Phase')
+            self.add_attribute_on_AML_element(PreprocessIE, 'Name')
+            self.write_value_on_AML_attribute(PreprocessIE, 'Name', 'Preprocess')
+            
             #create chain of charaters for HPC:
             chain_string = ""
             for element in Preprocess_models:
-                chain_string += f'{element}.run>>'
+                chain_string += f'{element}>>'
             chain_string = chain_string.rstrip('>>')
             #add attribute 'Sequence':
             self.add_attribute_on_AML_element(PreprocessIE, 'Sequence')
@@ -211,7 +225,7 @@ class AML_App():
                 #add ID attribute
                 self.add_attribute_on_AML_element(ElementIE, self.Software_softwareID_name)
                 #fill in ID attribute
-                self.write_value_on_AML_attribute(ElementIE, self.Software_softwareID_name, element)
+                self.write_value_on_AML_attribute(ElementIE, self.Software_softwareID_name, element + '.run')
                 #add Parameters IE
                 self.create_AML_element(ElementIE, 'Parameters')
                 #get Parameters IE
@@ -224,12 +238,13 @@ class AML_App():
         # 1b. Preprocess
         Bool_Sim_models = any(element in self.Models["Simulation"] for element in self.Predefined_workflows[self.selections[self.workflow_column_name]])
         if Bool_Sim_models:
-            self.create_AML_element(PhasesIE, 'Simulations')
-            SimulationsIE = PhasesIE.find("./*[@Name='Simulations']")
+            SimulationsIE = self.create_AML_element(PhasesIE, 'Phase')
+            self.add_attribute_on_AML_element(SimulationsIE, 'Name')
+            self.write_value_on_AML_attribute(SimulationsIE, 'Name', 'Simulation')
             #create chain of charaters for HPC:
             chain_string = ""
             for element in Simulation_models:
-                chain_string += f'{element}.run>>'
+                chain_string += f'{element}>>'
             chain_string = chain_string.rstrip('>>')
             #add it to attribute 'Sequence':
             self.add_attribute_on_AML_element(SimulationsIE, 'Sequence')
@@ -244,22 +259,22 @@ class AML_App():
                 #add ID attribute
                 self.add_attribute_on_AML_element(ElementIE, self.Software_softwareID_name)
                 #fill in ID attribute
-                self.write_value_on_AML_attribute(ElementIE, self.Software_softwareID_name, element)
+                self.write_value_on_AML_attribute(ElementIE, self.Software_softwareID_name, element + '.run')
                 #add Parameters IE
                 self.create_AML_element(ElementIE, 'Parameters')
                 #get Parameters IE
                 ParametersIE = ElementIE.find("./*[@Name='Parameters']")
                 #add values atribute to Parameters IE
                 self.add_attribute_on_AML_element(ParametersIE, self.Software_Parameters_values_name)
-                self.write_value_on_AML_attribute(ParametersIE, 'values', '{doe_row}')
+                self.write_value_on_AML_attribute(ParametersIE, 'values', '{variables.doe_row}')
                 #add output_file atribute to Parameters IE
                 self.add_attribute_on_AML_element(ParametersIE, self.Software_Parameters_OutputFile_name)
-                value_field = '{results_folder}/{line_number}/' + element
+                value_field = '{variables.results_folder}/{variables.line_number}/' + element
                 self.write_value_on_AML_attribute(ParametersIE, self.Software_Parameters_OutputFile_name, value_field)
                 if idx > 0:
                     #add inputs_file atribute to Parameters IE
                     self.add_attribute_on_AML_element(ParametersIE, 'inputs_folder')
-                    value_field = '{results_folder}/{line_number}/' + Simulation_models[idx-1]
+                    value_field = '{variables.results_folder}/{variables.line_number}/' + Simulation_models[idx-1]
                     self.write_value_on_AML_attribute(ParametersIE, 'inputs_folder', value_field)
                     
         else:
@@ -268,12 +283,14 @@ class AML_App():
         # 1c. Postprocess
         Bool_Postproc_models = any(element in self.Models["Postprocess"] for element in self.Predefined_workflows[self.selections[self.workflow_column_name]])
         if Bool_Postproc_models:
-            self.create_AML_element(PhasesIE, 'Postprocess')
-            PostprocessIE = PhasesIE.find("./*[@Name='Postprocess']")
+            PostprocessIE = self.create_AML_element(PhasesIE, 'Phase')
+            self.add_attribute_on_AML_element(PostprocessIE, 'Name')
+            self.write_value_on_AML_attribute(PostprocessIE, 'Name', 'Postprocess')
+
             #create chain of charaters for HPC:
             chain_string = ""
             for element in Postprocess_models:
-                chain_string += f'{element}.run>>'
+                chain_string += f'{element}>>'
             chain_string = chain_string.rstrip('>>')
             #add it to attribute 'Sequence':
             self.add_attribute_on_AML_element(PostprocessIE, 'Sequence')
@@ -287,7 +304,7 @@ class AML_App():
                 #add ID attribute
                 self.add_attribute_on_AML_element(ElementIE, self.Software_softwareID_name)
                 #fill in ID attribute
-                self.write_value_on_AML_attribute(ElementIE, self.Software_softwareID_name, element)
+                self.write_value_on_AML_attribute(ElementIE, self.Software_softwareID_name, element + '.run')
                 #add Parameters IE
                 self.create_AML_element(ElementIE, 'Parameters')
                 #get Parameters IE
@@ -303,13 +320,15 @@ class AML_App():
         #find DoE
         DoEIE = InputsIE.find(f"./*[@Name='{self.DoEIE_name}']")
         #write DoE source in source attribute from the user's input
-        self.write_value_on_AML_attribute(DoEIE, 'source', self.PathOfDoE)
-        #write destination?
+        self.write_value_on_AML_attribute(DoEIE, 'source', os.path.normpath(self.PathOfDoE))
+        self.write_value_on_AML_attribute(DoEIE, 'destination', os.path.normpath(self.ftp_destination_workflow_folder))
         
         # write outputs in Workflow_definition
         OutputsIE = Workflow_DefinitionIE.find(f"./*[@Name='{self.OutputsIE_name}']")
         for output_element in self.filtered_selected_output_options:
             self.add_attribute_on_AML_element(OutputsIE, output_element)
+        results_folderIE = OutputsIE.find("./*[@Name='results_folder']")
+        self.write_value_on_AML_attribute(results_folderIE, 'destination', os.path.normpath(self.ftp_destination_workflow_folder))
         
         # save all modifications
         roottemplate.save(self.template_instance_path)
@@ -330,9 +349,9 @@ if __name__ == "__main__":
     Predefined_workflows = CP.get_predifined_workflows()
     output_options = CP.get_possible_outputs()
     
-    pathofDOEprovidedbyBSCinterface= r'C:\Users\SMO\OneDrive - ESI Group\Documents\Work\Proyectos\CAELESTIS\02 WP_2\T2.2\ManagingAML\Doe_FormatExample.csv'
+    pathofDOEprovidedbyBSCinterface= os.path.normpath(r'/.statelite/tmpfs/gpfs/projects/bsce81/esi/tests/2024_03_28_ML/001_Data\Doe_FormatExample.csv')
     outputsselectionfromBSCinterface = ["Resin_pressure_field", "Resin_velocity_field"]
-    inputsfromBSCinterface = 'w3'
+    inputsfromBSCinterface = 'w2'
     
     # Update data in the template
     AML = AML_App(pathofDOEprovidedbyBSCinterface, inputsfromBSCinterface,outputsselectionfromBSCinterface)
